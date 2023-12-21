@@ -28,14 +28,7 @@ const veryfyJWT = (req, res, next) => {
 }
 
 
-//jwt
 
-app.post('/jwt', (req, res) => {
-  const user = req.body;
-  const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
-
-  res.send({ token })
-})
 
 
 
@@ -67,9 +60,28 @@ async function run() {
 
 
 
+    //jwt
+
+    app.post('/jwt', (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
+
+      res.send({ token })
+    })
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email }
+      const user = await usersCollection.findOne(query);
+      if (user?.role !== 'admin') {
+        return res.status(403).send({ error: true, message: 'forbidden message' });
+      }
+      next();
+    }
+
     //user related apis
 
-    app.get('/users', async (req, res) => {
+    app.get('/users', veryfyJWT, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
@@ -124,6 +136,22 @@ async function run() {
       res.send(result)
     })
 
+    //beDoctor post
+    app.post('/beDoctor', async (req, res) => {
+      const beDoctorInfo = req.body;
+      console.log(beDoctorInfo);
+      const result = await beDoctorCollection.insertOne(beDoctorInfo);
+      res.send(result)
+    })
+
+    //beDoctor get
+
+
+    app.get('/beDoctor', async (req, res) => {
+      const cursor = beDoctorCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    })
 
     //for delete
     app.delete("/users/:id", async (req, res) => {
@@ -145,7 +173,19 @@ async function run() {
       res.send(result)
     })
 
-
+    app.get("/appoinment", veryfyJWT, async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        res.send([]);
+      }
+      const decodedEmail = req.decoded.email;
+      if (email !== decodedEmail) {
+        return res.status(403).send({ error: true, message: "no access" });
+      }
+      const query = { email: email };
+      const result = await appoinmentCollection.find(query).toArray();
+      res.send(result);
+    });
 
     //dedoctor page
 
