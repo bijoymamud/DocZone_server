@@ -1,5 +1,6 @@
 const express = require('express');
 const app = express();
+const { ObjectId } = require('mongodb');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
@@ -36,7 +37,7 @@ const veryfyJWT = (req, res, next) => {
 //database connection
 
 
-const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.vrgzzke.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -57,6 +58,7 @@ async function run() {
     const doctorCollection = client.db("doczoneDB").collection("doctor");
     const appoinmentCollection = client.db("doczoneDB").collection("appoinment");
     const beDoctorCollection = client.db("doczoneDB").collection("beDoctor");
+    const addDoctorCollection = client.db("doczoneDB").collection("addDoctor");
 
 
 
@@ -136,6 +138,35 @@ async function run() {
       res.send(result)
     })
 
+
+    // app.get('/singleDoctor/:id', async (req, res) => {
+    //   const id = req.params.id;
+    //   const objectId = new ObjectId(id);
+
+    //   // Find the document by its _id
+    //   const result = await doctorCollection.findOne({ _id: objectId });
+    //   res.send(result)
+    // })
+
+    app.get('/doctor/:id', async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+
+      try {
+        // Assuming doctorCollection is your MongoDB collection
+        const singleDoctor = await doctorCollection.findOne({ _id: new ObjectId(id) });
+
+        if (singleDoctor) {
+          res.send(singleDoctor);
+        } else {
+          res.status(404).send({ error: 'Doctor not found' });
+        }
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: 'Internal Server Error' });
+      }
+    });
+
     //beDoctor post
     app.post('/beDoctor', async (req, res) => {
       const beDoctorInfo = req.body;
@@ -152,6 +183,19 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     })
+
+
+    //adding doctor from admin dashboard
+
+    app.post('/addDoctor', async (req, res) => {
+      const addDoctorInfo = req.body;
+      console.log(addDoctorInfo);
+      const result = await addDoctorCollection.insertOne(addDoctorInfo)
+      res.send(result)
+    })
+
+
+
 
     //for delete
     app.delete("/users/:id", async (req, res) => {
