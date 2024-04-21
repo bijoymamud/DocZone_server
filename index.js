@@ -1,8 +1,9 @@
 const express = require('express');
 const app = express();
+const stripe = require("stripe")('sk_test_51P6p8cDXH7ad3HZ4OZnz6gsD0Ice7SIDoABl0v10NzGJGIcbXmYd6Jko4i7Esiig3jXtp9SUU5R4ki5zDuVfNyIB00RoZtPuSl');
 const { ObjectId } = require('mongodb');
 const cors = require('cors');
-const SSLCommerzPayment = require('sslcommerz-lts')
+
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const port = process.env.PORT || 5000;
@@ -52,9 +53,7 @@ const client = new MongoClient(uri, {
 
 //for sslcommerz
 
-const store_id = process.env.STORE_ID;
-const store_passwd = process.env.STORE_PASS
-const is_live = false //true for live, false for sandbox
+
 
 
 
@@ -70,13 +69,15 @@ async function run() {
     const beDoctorCollection = client.db("doczoneDB").collection("beDoctor");
     const addDoctorCollection = client.db("doczoneDB").collection("addDoctor");
 
-    const paymentCollection = client.db("doczoneDB").collection("paymentMethod")
+    const paymentCollection = client.db("doczoneDB").collection("payments");
+
+
 
     //jwt
 
     app.post('/jwt', (req, res) => {
       const user = req.body;
-      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '10h' })
 
       res.send({ token })
     })
@@ -118,7 +119,7 @@ async function run() {
       const email = req.params.email;
 
       if (req.decoded.email !== email) {
-        res.send({ admin: false })
+        return res.send({ admin: false })
 
       }
       const query = { email: email }
@@ -249,132 +250,32 @@ async function run() {
 
 
 
-    //delete appoinment
-    // app.delete('/appointment/:id', async (req, res) => {
-    //   try {
-    //     const appointmentId = req.params.id;
-
-    //     // Find and delete the appointment by its ID
-    //     const result = await appoinmentCollection.deleteOne({ _id: appointmentId });
-
-    //     if (result.deletedCount > 0) {
-    //       // Appointment deleted successfully
-    //       res.json({ success: true, message: 'Appointment deleted successfully.' });
-    //     } else {
-    //       // No appointment found with the given ID
-    //       res.status(404).json({ success: false, message: 'Appointment not found.' });
-    //     }
-    //   } catch (error) {
-    //     // Handle any errors that occur during the delete operation
-    //     console.error(error);
-    //     res.status(500).json({ success: false, message: 'Error deleting appointment.' });
-    //   }
-    // });
-    // app.delete("appoinment", async (req, res) => {
-    //   const id = req.params.id;
-    //   const query = { _id: new ObjectId(id) };
-    //   const result = await appoinmentCollection.deleteOne(query);
-    //   res.send(result);
-    // })
 
 
-    //dedoctor page
-
-    // app.post('/beDoctor', async (req, res) => {
-    //   const info = req.body;
-    //   console.log(info);
-    //   const result = await beDoctorCollection.insertOne(info);
-    //   res.send(result);
-    // });
-
-
-    //for payment
-    const transition_id = new ObjectId().toString();
-    app.post("/paymentMethod", async (req, res) => {
-
-      const appoinmentInfo = req.body;
-
-      const dataCovarage = appoinmentInfo.paymentInfo;
-      console.log(dataCovarage);
-      const data = {
-        total_amount: dataCovarage?.price,
-        currency: 'BDT',
-        tran_id: 'transition_id', // use unique tran_id for each api call
-        success_url: `http://localhost:5000/myAppointments/success/${transition_id}`,
-        fail_url: `http://localhost:5000/fail/${transition_id}`,
-        cancel_url: 'http://localhost:3030/cancel',
-        ipn_url: 'http://localhost:3030/ipn',
-        shipping_method: 'Courier',
-        product_name: 'Computer.',
-        product_category: 'Electronic',
-        product_profile: 'general',
-        cus_name: 'Customer Name',
-        cus_email: dataCovarage?.email,
-        cus_add1: 'Dhaka',
-        cus_add2: 'Dhaka',
-        cus_city: 'Dhaka',
-        cus_state: 'Dhaka',
-        cus_postcode: '1000',
-        cus_country: 'Bangladesh',
-        cus_phone: '01711111111',
-        cus_fax: '01711111111',
-        ship_name: 'Customer Name',
-        ship_add1: 'Dhaka',
-        ship_add2: 'Dhaka',
-        ship_city: 'Dhaka',
-        ship_state: 'Dhaka',
-        ship_postcode: 1000,
-        ship_country: 'Bangladesh',
-      };
-      const sslcz = new SSLCommerzPayment(store_id, store_passwd, is_live)
-      sslcz.init(data).then(apiResponse => {
-        // Redirect the user to payment gateway
-        let GatewayPageURL = apiResponse.GatewayPageURL
-        res.send({ url: GatewayPageURL })
-        console.log('Redirecting to: ', GatewayPageURL)
-
-        const confirmOrder = {
-          dataCovarage,
-          confirmStatus: false,
-          transitionId: transition_id
-        };
-        const result = paymentCollection.insertOne(confirmOrder);
-
-
-        // console.log('Redirecting to: ', GatewayPageURL)
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      console.log(price, amount);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
       });
-
-      app.post("/myAppointments/success/:tranId", async (req, res) => {
-        const transId = req.params.tranId;
-        const result = await paymentCollection.updateOne(
-          { transitionId: transId },
-          {
-            $set: {
-              confirmStatus: true
-            }
-          }
-        )
-        if (result.modifiedCount > 0) {
-          res.redirect(`http://localhost:5000/myAppointments/success/${transId}`)
-        }
-        // console.log("655", transId);
-      })
-
-      app.post("/myAppointments/fail/:tranId", async (req, res) => {
-        const transId = req.params.tranId;
-        const result = await paymentCollection.deleteOne({ transitionId: transId });
-        if (result.deletedCount) {
-          res.redirect(`http://localhost:5000/myAppointments/fail/${transId}`)
-        }
-
-
+      res.send({
+        clientSecret: paymentIntent.client_secret,
       });
-    })
+    });
 
 
+    app.post("/payments", async (req, res) => {
+      const payment = req.body;
+      const insertResult = await paymentCollection.insertOne(payment);
 
+      const query = { _id: { $in: payment.doctorId.map(id => new ObjectId(id)) } };
+      const deleteResult = await appoinmentCollection.deleteMany(query);
+      res.send({ insertResult, deleteResult });
 
-
+    });
 
 
 
